@@ -329,6 +329,9 @@ function getAutoValues(mDoc, isModifier, extendedAutoValueContext) {
           value: keyInfo.value,
           operator: keyInfo.operator || null
         };
+      },
+      affectedKeys: function() {
+        return mDoc._affectedKeys || {};
       }
     }, extendedAutoValueContext || {}), mDoc.getObject());
 
