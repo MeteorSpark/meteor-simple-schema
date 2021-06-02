@@ -3,6 +3,56 @@
 /* global MongoObject */
 /* global Utility */
 
+/* TY's update on 31-May-2021:
+  Added support for prefix keys in schemas.
+  Example:
+  
+  someCollection.attachSchema({
+    "[PREFIX]foo": {  // e.g. foo::xyz
+      type: String
+      optional: true
+    }
+
+    "[PREFIX]bar": {  // e.g. bar::xyz
+      type: [String]
+      optional: true
+    }
+    
+    "[PREFIX]aaa": {  // e.g. aaa::xyz
+      type: Object
+      optional: true
+    }
+    
+    "[PREFIX]aaa.bbb": {  // e.g. aaa::xyz.bbb
+      type: String
+      optional: true
+    }
+
+    "ccc": {
+      type: Object
+      optional: true
+    }
+
+    "ccc.[PREFIX]ddd": {  // e.g. ccc.ddd::xyz
+      type: Number
+      optional: true
+    }
+    
+    "[PREFIX]eee": {
+      type: Object
+      optional: true
+    }
+    
+    "[PREFIX]eee.[PREFIX]fff": {  // e.g. eee::xyz.fff::qrs
+      type: Boolean
+      optional: true
+    }
+  })
+
+*/
+var KEY_PREFEX_DENOTER = "[PREFIX]";
+var KEY_PREFEX_SEPERATOR = "::";
+
 var schemaDefinition = {
   type: Match.Any,
   label: Match.Optional(Match.OneOf(String, Function)),
@@ -329,6 +379,9 @@ function getAutoValues(mDoc, isModifier, extendedAutoValueContext) {
           value: keyInfo.value,
           operator: keyInfo.operator || null
         };
+      },
+      affectedKeys: function() {
+        return mDoc._affectedKeys || {};
       }
     }, extendedAutoValueContext || {}), mDoc.getObject());
 
@@ -426,6 +479,12 @@ SimpleSchema = function(schemas, options) {
   options = options || {};
   schemas = schemas || {};
 
+  if (options.allow_custom_fields) {
+    self.allow_custom_fields = true;
+  } else {
+    self.allow_custom_fields = false;
+  }
+
   if (!_.isArray(schemas)) {
     schemas = [schemas];
   }
@@ -435,6 +494,9 @@ SimpleSchema = function(schemas, options) {
 
   // store the list of defined keys for speedier checking
   self._schemaKeys = [];
+
+  // store the list of defined prefix keys
+  self._schemaPrefixKeys = [];
 
   // store autoValue functions by key
   self._autoValues = {};
@@ -460,6 +522,10 @@ SimpleSchema = function(schemas, options) {
     fieldNameRoot = fieldName.split(".")[0];
 
     self._schemaKeys.push(fieldName);
+
+    if (fieldName.indexOf(KEY_PREFEX_DENOTER) >= 0) {
+      self._schemaPrefixKeys.push(fieldName);
+    }
 
     // We support defaultValue shortcut by converting it immediately into an
     // autoValue.
@@ -722,7 +788,7 @@ SimpleSchema.prototype.clean = function(doc, options) {
     mDoc.forEachNode(function() {
       var gKey = this.genericKey, p, def, val;
       if (gKey) {
-        def = self._schema[gKey];
+        def = self.schema(gKey);
         val = this.value;
         // Filter out props if necessary; any property is OK for $unset because we want to
         // allow conversions to remove props that have been removed from the schema.
@@ -809,7 +875,9 @@ SimpleSchema.prototype.schema = function(key) {
   var self = this;
   // if not null or undefined (more specific)
   if (key !== null && key !== void 0) {
-    return self._schema[SimpleSchema._makeGeneric(key)];
+    key = SimpleSchema._makeGeneric(key);
+    key = self.getEquivalentSchemaKey(key);
+    return self._schema[key];
   } else {
     return self._schema;
   }
@@ -875,7 +943,7 @@ SimpleSchema.prototype.labels = function(labels) {
       return;
     }
 
-    self._schema[fieldName].label = label;
+    self.schema(fieldName).label = label;
     self._depsLabels[fieldName] && self._depsLabels[fieldName].changed();
   });
 };
@@ -1101,31 +1169,27 @@ SimpleSchema.prototype.messageForError = function(type, key, def, value) {
 SimpleSchema.prototype.allowsKey = function(key) {
   var self = this;
 
+   // Disallow any keys with "[PREFIX]"
+  if (key.indexOf(KEY_PREFEX_DENOTER) >= 0) {
+    return false
+  }
+
   // Loop through all keys in the schema
   return _.any(self._schemaKeys, function(schemaKey) {
-
     // If the schema key is the test key, it's allowed.
     if (schemaKey === key) {
       return true;
     }
+    
+    // If this is a simple top level key that isn't part of the schema and custom fields are
+    // allowed
+    if (key.indexOf(".") == -1 && self.allow_custom_fields) {
+      return true;
+    }
 
-    // Black box handling
-    if (self.schema(schemaKey).blackbox === true) {
-      var kl = schemaKey.length;
-      var compare1 = key.slice(0, kl + 2);
-      var compare2 = compare1.slice(0, -1);
-
-      // If the test key is the black box key + ".$", then the test
-      // key is NOT allowed because black box keys are by definition
-      // only for objects, and not for arrays.
-      if (compare1 === schemaKey + '.$') {
-        return false;
-      }
-
-      // Otherwise
-      if (compare2 === schemaKey + '.') {
-        return true;
-      }
+    // blackbox and regex handling
+    if (SimpleSchema.getKeyMatchScore(key, schemaKey, {includeNestedLevels: self.schema(schemaKey).blackbox})) {
+      return true
     }
 
     return false;
@@ -1143,7 +1207,13 @@ SimpleSchema.prototype.objectKeys = function(keyPrefix) {
   if (!keyPrefix) {
     return self._firstLevelSchemaKeys;
   }
-  return self._objectKeys[keyPrefix + "."] || [];
+
+  var eqSchemaKey = self.getEquivalentSchemaKey(keyPrefix);
+  if (eqSchemaKey) {
+    return self._objectKeys[eqSchemaKey + "."] || [];
+  } else {
+    return [];
+  }
 };
 
 SimpleSchema.prototype.validate = function (obj, options) {
@@ -1182,3 +1252,78 @@ SimpleSchema.prototype.validator = function (options) {
     self.validate(obj);
   };
 };
+
+SimpleSchema.prototype.getEquivalentSchemaKey = function(key) {
+  self = this;
+
+  // Exact same match
+  if (self._schema[key]) {
+    return key;
+  }
+
+  // Support using prefix keys
+  var currentMatchScore = null;
+  var matchingSchemaKey = null;
+  for (var schemaKey of self._schemaPrefixKeys) {
+    var matchScore = SimpleSchema.getKeyMatchScore(key, schemaKey)
+    if (matchScore) {
+      if (currentMatchScore === null) {
+        currentMatchScore = matchScore;
+        matchingSchemaKey = schemaKey;
+      } else {
+        // Multiple matches found, this will not happen often
+        for (var i = 0; i < matchScore.length; i++) {
+          if (matchScore[i] > (currentMatchScore[i] || 0)) {
+            matchingSchemaKey = schemaKey;
+            currentMatchScore = matchScore;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  return matchingSchemaKey;
+}
+
+SimpleSchema.getKeyMatchScore = function (testKey, schemaKey, options) {
+  // This function test if testKey matches schemKey, capable to match if schemaKey is a regular key or a regex key
+  options = _.extend({includeNestedLevels: false}, options);
+  
+  schemaKeyLevels = schemaKey.split(".");
+  testKeyLevels = testKey.split(".");
+
+  if (!options.includeNestedLevels && schemaKeyLevels.length !== testKeyLevels.length) {
+    return null
+  }
+
+  var matchScore = []
+  for (var i = 0; i < schemaKeyLevels.length; i++) {
+    if (schemaKeyLevels[i].indexOf(KEY_PREFEX_DENOTER) == 0) { // if the schemaKey in this level is in prefix form
+      var prefix = schemaKeyLevels[i].substr(KEY_PREFEX_DENOTER.length);
+      var testKeyPrefix = testKeyLevels[i].substr(0, testKeyLevels[i].indexOf(KEY_PREFEX_SEPERATOR));
+      if (prefix != testKeyPrefix) {
+        return null
+      } 
+      // key level matched in prefix form
+      matchScore.push(prefix.length);
+    } else if (schemaKeyLevels[i] != testKeyLevels[i]) {  // if the schemaKey in this level is in regular form
+      return null
+    }
+    // key level matched in regular form
+    matchScore.push(Infinity);
+  }
+
+  // for (var i = 0; i < schemaKeyLevels.length; i++) {
+  //   var schemaKeyTestResult = /^\/(.*)\/$/.exec(schemaKeyLevels[i])
+  //   if (schemaKeyTestResult) { // if the schemaKey in this level is in regex form
+  //     if (!(new RegExp(schemaKeyTestResult[1]).test(testKeyLevels[i]))) {
+  //       return false
+  //     }
+  //   } else if (schemaKeyLevels[i] != testKeyLevels[i]) {  // if the schemaKey in this level is in regular form
+  //     return false
+  //   }
+  // }
+
+  return matchScore;
+}

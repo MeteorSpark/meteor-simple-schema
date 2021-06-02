@@ -109,10 +109,15 @@ doValidation1 = function doValidation1(obj, isModifier, isUpsert, keyToValidate,
 
   // Validation function called for each affected key
   function validate(val, affectedKey, affectedKeyGeneric, def, op, skipRequiredCheck, isInArrayItemObject, isInSubObject) {
-
     // Get the schema for this key, marking invalid if there isn't one.
     if (!def) {
-      invalidKeys.push(Utility.errorObject("keyNotInSchema", affectedKey, val, def, ss));
+      // If custom fields are allowed, pretend like we have a definition for unknown fields.
+      if (ss.allow_custom_fields) {
+        def = {optional: true};
+      } else {
+        invalidKeys.push(Utility.errorObject("keyNotInSchema", affectedKey, val, def, ss));
+      }
+      
       return;
     }
 
@@ -244,14 +249,30 @@ doValidation1 = function doValidation1(obj, isModifier, isUpsert, keyToValidate,
 
     // Loop through object keys
     else if (Utility.isBasicObject(val) && (!def || !def.blackbox)) {
-
       // Get list of present keys
       var presentKeys = _.keys(val);
+      
+      function matchOneOfThePresentKeys(schemaObjectKey) {
+        for (var presentKey of presentKeys) {
+          if (SimpleSchema.getKeyMatchScore(presentKey, schemaObjectKey) != null) {
+            return true;
+          }
+        }
+        return false;
+      }
 
       // Check all present keys plus all keys defined by the schema.
       // This allows us to detect extra keys not allowed by the schema plus
       // any missing required keys, and to run any custom functions for other keys.
-      var keysToCheck = _.union(presentKeys, ss.objectKeys(affectedKeyGeneric));
+      var keysToCheck = new Set(presentKeys);
+      for (var schemaObjectKey of ss.objectKeys(affectedKeyGeneric)) {
+        if (matchOneOfThePresentKeys(schemaObjectKey)) {
+          continue;
+        } 
+        keysToCheck.add(schemaObjectKey);
+      }
+      
+      keysToCheck = Array.from(keysToCheck);
 
       // If this object is within an array, make sure we check for
       // required as if it's not a modifier
