@@ -50,8 +50,7 @@
   })
 
 */
-var KEY_PREFEX_DENOTER = "[PREFIX]";
-var KEY_PREFEX_SEPERATOR = "::";
+var KEY_PREFIX_DENOTER = "::";
 
 var schemaDefinition = {
   type: Match.Any,
@@ -471,6 +470,8 @@ function getAutoValues(mDoc, isModifier, extendedAutoValueContext) {
   });
 }
 
+var generailzed_schemas_copies = [];
+
 //exported
 SimpleSchema = function(schemas, options) {
   var self = this;
@@ -489,8 +490,9 @@ SimpleSchema = function(schemas, options) {
     schemas = [schemas];
   }
 
-  // adjust and store a copy of the schema definitions
   self._schema = mergeSchemas(schemas);
+
+  self._prefixKeysMap = {};
 
   // store the list of defined keys for speedier checking
   self._schemaKeys = [];
@@ -518,12 +520,13 @@ SimpleSchema = function(schemas, options) {
     if (!Match.test(definition, schemaDefinition)) {
       throw new Error('Invalid definition for ' + fieldName + ' field.');
     }
-
+    
     fieldNameRoot = fieldName.split(".")[0];
 
     self._schemaKeys.push(fieldName);
 
-    if (fieldName.indexOf(KEY_PREFEX_DENOTER) >= 0) {
+    if (fieldName.indexOf(KEY_PREFIX_DENOTER) >= 0) {
+      self._prefixKeysMap[fieldName.replace(/::<.*?>/g, `${KEY_PREFIX_DENOTER}<>`)] = fieldName
       self._schemaPrefixKeys.push(fieldName);
     }
 
@@ -877,6 +880,8 @@ SimpleSchema.prototype.schema = function(key) {
   if (key !== null && key !== void 0) {
     key = SimpleSchema._makeGeneric(key);
     key = self.getEquivalentSchemaKey(key);
+    if (key == null)
+      return null
     return self._schema[key];
   } else {
     return self._schema;
@@ -1169,11 +1174,6 @@ SimpleSchema.prototype.messageForError = function(type, key, def, value) {
 SimpleSchema.prototype.allowsKey = function(key) {
   var self = this;
 
-   // Disallow any keys with "[PREFIX]"
-  if (key.indexOf(KEY_PREFEX_DENOTER) >= 0) {
-    return false
-  }
-
   // Loop through all keys in the schema
   return _.any(self._schemaKeys, function(schemaKey) {
     // If the schema key is the test key, it's allowed.
@@ -1188,7 +1188,7 @@ SimpleSchema.prototype.allowsKey = function(key) {
     }
 
     // blackbox and regex handling
-    if (SimpleSchema.getKeyMatchScore(key, schemaKey, {includeNestedLevels: self.schema(schemaKey).blackbox})) {
+    if (self.isKeyMatch(key, schemaKey, {includeNestedLevels: self.schema(schemaKey).blackbox})) {
       return true
     }
 
@@ -1255,75 +1255,22 @@ SimpleSchema.prototype.validator = function (options) {
 
 SimpleSchema.prototype.getEquivalentSchemaKey = function(key) {
   self = this;
-
+  
   // Exact same match
-  if (self._schema[key]) {
+  if (self._schema[key] != null) {
     return key;
   }
 
-  // Support using prefix keys
-  var currentMatchScore = null;
-  var matchingSchemaKey = null;
-  for (var schemaKey of self._schemaPrefixKeys) {
-    var matchScore = SimpleSchema.getKeyMatchScore(key, schemaKey)
-    if (matchScore) {
-      if (currentMatchScore === null) {
-        currentMatchScore = matchScore;
-        matchingSchemaKey = schemaKey;
-      } else {
-        // Multiple matches found, this will not happen often
-        for (var i = 0; i < matchScore.length; i++) {
-          if (matchScore[i] > (currentMatchScore[i] || 0)) {
-            matchingSchemaKey = schemaKey;
-            currentMatchScore = matchScore;
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  return matchingSchemaKey;
+  return self._prefixKeysMap[(key+".").replace(/::.+?\./g, `${KEY_PREFIX_DENOTER}<>.`).slice(0, -1)];
 }
 
-SimpleSchema.getKeyMatchScore = function (testKey, schemaKey, options) {
-  // This function test if testKey matches schemKey, capable to match if schemaKey is a regular key or a regex key
+SimpleSchema.prototype.isKeyMatch = function (testKey, schemaKey, options) { 
   options = _.extend({includeNestedLevels: false}, options);
-  
-  schemaKeyLevels = schemaKey.split(".");
-  testKeyLevels = testKey.split(".");
-
-  if (!options.includeNestedLevels && schemaKeyLevels.length !== testKeyLevels.length) {
-    return null
+  testKey = (testKey+".").replace(/::.+?\./g, `${KEY_PREFIX_DENOTER}<>.`).slice(0, -1);
+  schemaKey = schemaKey.replace(/::<.*?>/g, `${KEY_PREFIX_DENOTER}<>`);
+  if (options.includeNestedLevels) {
+    return testKey.indexOf(schemaKey) == 0
   }
 
-  var matchScore = []
-  for (var i = 0; i < schemaKeyLevels.length; i++) {
-    if (schemaKeyLevels[i].indexOf(KEY_PREFEX_DENOTER) == 0) { // if the schemaKey in this level is in prefix form
-      var prefix = schemaKeyLevels[i].substr(KEY_PREFEX_DENOTER.length);
-      var testKeyPrefix = testKeyLevels[i].substr(0, testKeyLevels[i].indexOf(KEY_PREFEX_SEPERATOR));
-      if (prefix != testKeyPrefix) {
-        return null
-      } 
-      // key level matched in prefix form
-      matchScore.push(prefix.length);
-    } else if (schemaKeyLevels[i] != testKeyLevels[i]) {  // if the schemaKey in this level is in regular form
-      return null
-    }
-    // key level matched in regular form
-    matchScore.push(Infinity);
-  }
-
-  // for (var i = 0; i < schemaKeyLevels.length; i++) {
-  //   var schemaKeyTestResult = /^\/(.*)\/$/.exec(schemaKeyLevels[i])
-  //   if (schemaKeyTestResult) { // if the schemaKey in this level is in regex form
-  //     if (!(new RegExp(schemaKeyTestResult[1]).test(testKeyLevels[i]))) {
-  //       return false
-  //     }
-  //   } else if (schemaKeyLevels[i] != testKeyLevels[i]) {  // if the schemaKey in this level is in regular form
-  //     return false
-  //   }
-  // }
-
-  return matchScore;
+  return testKey == schemaKey
 }

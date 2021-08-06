@@ -254,7 +254,7 @@ doValidation1 = function doValidation1(obj, isModifier, isUpsert, keyToValidate,
       
       function matchOneOfThePresentKeys(schemaObjectKey) {
         for (var presentKey of presentKeys) {
-          if (SimpleSchema.getKeyMatchScore(presentKey, schemaObjectKey) != null) {
+          if (ss.isKeyMatch(presentKey, schemaObjectKey) != null) {
             return true;
           }
         }
