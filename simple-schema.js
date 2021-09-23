@@ -3,27 +3,27 @@
 /* global MongoObject */
 /* global Utility */
 
-/* TY's update on 31-May-2021:
+/* TY's update on 22-Sept-2021:
   Added support for prefix keys in schemas.
   Example:
   
   someCollection.attachSchema({
-    "[PREFIX]foo": {  // e.g. foo::xyz
+    "foo::<some-random-label-here>": {  // e.g. foo::xyz
       type: String
       optional: true
     }
 
-    "[PREFIX]bar": {  // e.g. bar::xyz
+    "bar::<label-here-wont-affect-the-schema>": {  // e.g. bar::xyz
       type: [String]
       optional: true
     }
     
-    "[PREFIX]aaa": {  // e.g. aaa::xyz
+    "aaa::<>": {  // e.g. aaa::xyz
       type: Object
       optional: true
     }
     
-    "[PREFIX]aaa.bbb": {  // e.g. aaa::xyz.bbb
+    "aaa::<>.bbb": {  // e.g. aaa::xyz.bbb
       type: String
       optional: true
     }
@@ -33,17 +33,17 @@
       optional: true
     }
 
-    "ccc.[PREFIX]ddd": {  // e.g. ccc.ddd::xyz
+    "ccc.ddd::<>": {  // e.g. ccc.ddd::xyz
       type: Number
       optional: true
     }
     
-    "[PREFIX]eee": {
+    "eee::<>": {
       type: Object
       optional: true
     }
     
-    "[PREFIX]eee.[PREFIX]fff": {  // e.g. eee::xyz.fff::qrs
+    "eee::<>.fff::<>": {  // e.g. eee::xyz.fff::qrs
       type: Boolean
       optional: true
     }
