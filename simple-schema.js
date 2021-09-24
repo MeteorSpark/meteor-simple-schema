@@ -526,7 +526,7 @@ SimpleSchema = function(schemas, options) {
     self._schemaKeys.push(fieldName);
 
     if (fieldName.indexOf(KEY_PREFIX_DENOTER) >= 0) {
-      self._prefixKeysMap[fieldName.replace(/::<.*?>/g, `${KEY_PREFIX_DENOTER}<>`)] = fieldName
+      self._prefixKeysMap[fieldName.replace(new RegExp(`${KEY_PREFIX_DENOTER}<.*?>`, 'g'), `${KEY_PREFIX_DENOTER}<>`)] = fieldName
       self._schemaPrefixKeys.push(fieldName);
     }
 
@@ -1261,13 +1261,13 @@ SimpleSchema.prototype.getEquivalentSchemaKey = function(key) {
     return key;
   }
 
-  return self._prefixKeysMap[(key+".").replace(/::.+?\./g, `${KEY_PREFIX_DENOTER}<>.`).slice(0, -1)];
+  return self._prefixKeysMap[(key+".").replace(new RegExp(`${KEY_PREFIX_DENOTER}.+?\\.`, 'g'), `${KEY_PREFIX_DENOTER}<>.`).slice(0, -1)];
 }
 
 SimpleSchema.prototype.isKeyMatch = function (testKey, schemaKey, options) { 
   options = _.extend({includeNestedLevels: false}, options);
-  testKey = (testKey+".").replace(/::.+?\./g, `${KEY_PREFIX_DENOTER}<>.`).slice(0, -1);
-  schemaKey = schemaKey.replace(/::<.*?>/g, `${KEY_PREFIX_DENOTER}<>`);
+  testKey = (testKey+".").replace(new RegExp(`${KEY_PREFIX_DENOTER}.+?\\.`, 'g'), `${KEY_PREFIX_DENOTER}<>.`).slice(0, -1);
+  schemaKey = schemaKey.replace(new RegExp(`${KEY_PREFIX_DENOTER}<.*?>`, 'g'), `${KEY_PREFIX_DENOTER}<>`);
   if (options.includeNestedLevels) {
     return testKey.indexOf(schemaKey) == 0
   }
