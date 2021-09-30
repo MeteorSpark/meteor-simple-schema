@@ -266,7 +266,7 @@ doValidation1 = function doValidation1(obj, isModifier, isUpsert, keyToValidate,
       // any missing required keys, and to run any custom functions for other keys.
       var keysToCheck = new Set(presentKeys);
       for (var schemaObjectKey of ss.objectKeys(affectedKeyGeneric)) {
-        if (matchOneOfThePresentKeys(schemaObjectKey, presentKeys, ss)) {
+        if (keysToCheck.has(schemaObjectKey) || matchOneOfThePresentKeys(schemaObjectKey, presentKeys, ss)) {
           continue;
         } 
         keysToCheck.add(schemaObjectKey);
