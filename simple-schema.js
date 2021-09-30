@@ -51,6 +51,7 @@
 
 */
 var KEY_PREFIX_DENOTER = "::";
+var KEY_PREFIX_PLACEHOLDER = "<>";
 
 var schemaDefinition = {
   type: Match.Any,
@@ -525,8 +526,7 @@ SimpleSchema = function(schemas, options) {
 
     self._schemaKeys.push(fieldName);
 
-    if (fieldName.indexOf(KEY_PREFIX_DENOTER) >= 0) {
-      self._prefixKeysMap[fieldName.replace(new RegExp(`${KEY_PREFIX_DENOTER}<.*?>`, 'g'), `${KEY_PREFIX_DENOTER}<>`)] = fieldName
+    if (fieldName.indexOf(`${KEY_PREFIX_DENOTER}${KEY_PREFIX_PLACEHOLDER}`) >= 0) {
       self._schemaPrefixKeys.push(fieldName);
     }
 
@@ -1174,6 +1174,10 @@ SimpleSchema.prototype.messageForError = function(type, key, def, value) {
 SimpleSchema.prototype.allowsKey = function(key) {
   var self = this;
 
+  if (key.indexOf(`${KEY_PREFIX_DENOTER}${KEY_PREFIX_DENOTER}`) != -1) {
+    return false;
+  }
+
   // Loop through all keys in the schema
   return _.any(self._schemaKeys, function(schemaKey) {
     // If the schema key is the test key, it's allowed.
@@ -1261,16 +1265,24 @@ SimpleSchema.prototype.getEquivalentSchemaKey = function(key) {
     return key;
   }
 
-  return self._prefixKeysMap[(key+".").replace(new RegExp(`${KEY_PREFIX_DENOTER}.+?\\.`, 'g'), `${KEY_PREFIX_DENOTER}<>.`).slice(0, -1)];
+  return self._prefixKeysMap[generalizePrefixKey(key)];
 }
 
 SimpleSchema.prototype.isKeyMatch = function (testKey, schemaKey, options) { 
+  if (testKey == schemaKey)
+    return true;
+    
   options = _.extend({includeNestedLevels: false}, options);
-  testKey = (testKey+".").replace(new RegExp(`${KEY_PREFIX_DENOTER}.+?\\.`, 'g'), `${KEY_PREFIX_DENOTER}<>.`).slice(0, -1);
-  schemaKey = schemaKey.replace(new RegExp(`${KEY_PREFIX_DENOTER}<.*?>`, 'g'), `${KEY_PREFIX_DENOTER}<>`);
+  testKey = generalizePrefixKey(testKey);
   if (options.includeNestedLevels) {
     return testKey.indexOf(schemaKey) == 0
   }
 
   return testKey == schemaKey
+}
+
+generailzedPrefixKeyRegex = new RegExp(`${KEY_PREFIX_DENOTER}.+?\\.`, 'g');
+
+function generalizePrefixKey(key) {
+  return (key+".").replace(generailzedPrefixKeyRegex, `${KEY_PREFIX_DENOTER}${KEY_PREFIX_PLACEHOLDER}.`).slice(0, -1)
 }
