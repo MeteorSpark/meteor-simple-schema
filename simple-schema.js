@@ -471,8 +471,6 @@ function getAutoValues(mDoc, isModifier, extendedAutoValueContext) {
   });
 }
 
-var generailzed_schemas_copies = [];
-
 //exported
 SimpleSchema = function(schemas, options) {
   var self = this;
@@ -1261,19 +1259,23 @@ SimpleSchema.prototype.getEquivalentSchemaKey = function(key) {
   self = this;
   
   // Exact same match
-  if (self._schema[key] != null) {
+  if (self._schema[key] != null || self._schema[generalizePrefixKey(key)]) {
     return key;
   }
 
-  return self._prefixKeysMap[generalizePrefixKey(key)];
+  return null
 }
 
 SimpleSchema.prototype.isKeyMatch = function (testKey, schemaKey, options) { 
   if (testKey == schemaKey)
     return true;
-    
+  
   options = _.extend({includeNestedLevels: false}, options);
-  testKey = generalizePrefixKey(testKey);
+  
+  if (schemaKey.indexOf(`${KEY_PREFIX_DENOTER}${KEY_PREFIX_PLACEHOLDER}`) != -1) {
+    testKey = generalizePrefixKey(testKey);
+  }
+  
   if (options.includeNestedLevels) {
     return testKey.indexOf(schemaKey) == 0
   }
