@@ -8,13 +8,8 @@
   Example:
   
   someCollection.attachSchema({
-    "foo::<some-random-label-here>": {  // e.g. foo::xyz
+    "foo::<>": {  // e.g. foo::xyz
       type: String
-      optional: true
-    }
-
-    "bar::<label-here-wont-affect-the-schema>": {  // e.g. bar::xyz
-      type: [String]
       optional: true
     }
     
