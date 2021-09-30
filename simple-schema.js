@@ -491,8 +491,6 @@ SimpleSchema = function(schemas, options) {
 
   self._schema = mergeSchemas(schemas);
 
-  self._prefixKeysMap = {};
-
   // store the list of defined keys for speedier checking
   self._schemaKeys = [];
 
