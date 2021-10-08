@@ -4,15 +4,6 @@
 /* global MongoObject */
 /* global doValidation1:true */
 
-function matchOneOfThePresentKeys(schemaObjectKey, presentKeys, simpleSchemaObj) {
-  for (var presentKey of presentKeys) {
-    if (simpleSchemaObj.isKeyMatch(presentKey, schemaObjectKey)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function doTypeChecks(def, keyValue, op) {
   var expectedType = def.type;
 
@@ -264,12 +255,13 @@ doValidation1 = function doValidation1(obj, isModifier, isUpsert, keyToValidate,
       // Check all present keys plus all keys defined by the schema.
       // This allows us to detect extra keys not allowed by the schema plus
       // any missing required keys, and to run any custom functions for other keys.
-      var keysToCheck = new Set(presentKeys);
-      for (var schemaObjectKey of ss.objectKeys(affectedKeyGeneric)) {
-        if (keysToCheck.has(schemaObjectKey) || matchOneOfThePresentKeys(schemaObjectKey, presentKeys, ss)) {
+      var schemaKeys = ss.objectKeys(affectedKeyGeneric)
+      var keysToCheck = new Set(schemaKeys);
+      for (var presentKey of presentKeys) {
+        if (keysToCheck.has(presentKey) || ss.matchOneOfTheSchemaPrefixKeys(presentKey, schemaKeys)) {
           continue;
         } 
-        keysToCheck.add(schemaObjectKey);
+        keysToCheck.add(presentKey);
       }
       
       keysToCheck = Array.from(keysToCheck);

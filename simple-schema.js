@@ -490,7 +490,7 @@ SimpleSchema = function(schemas, options) {
   self._schemaKeys = [];
 
   // store the list of defined prefix keys
-  self._schemaPrefixKeys = [];
+  self._schemaPrefixKeys = new Set();
 
   // store autoValue functions by key
   self._autoValues = {};
@@ -518,7 +518,7 @@ SimpleSchema = function(schemas, options) {
     self._schemaKeys.push(fieldName);
 
     if (fieldName.indexOf(`${KEY_PREFIX_DENOTER}${KEY_PREFIX_PLACEHOLDER}`) >= 0) {
-      self._schemaPrefixKeys.push(fieldName);
+      self._schemaPrefixKeys.add(fieldName);
     }
 
     // We support defaultValue shortcut by converting it immediately into an
@@ -1184,7 +1184,7 @@ SimpleSchema.prototype.allowsKey = function(key) {
 
     // blackbox and regex handling
     if (self.isKeyMatch(key, schemaKey, {includeNestedLevels: self.schema(schemaKey).blackbox})) {
-      return true
+      return true;
     }
 
     return false;
@@ -1256,7 +1256,7 @@ SimpleSchema.prototype.getEquivalentSchemaKey = function(key) {
     return key;
   }
 
-  return null
+  return null;
 }
 
 SimpleSchema.prototype.isKeyMatch = function (testKey, schemaKey, options) { 
@@ -1270,14 +1270,29 @@ SimpleSchema.prototype.isKeyMatch = function (testKey, schemaKey, options) {
   }
   
   if (options.includeNestedLevels) {
-    return testKey.indexOf(schemaKey) == 0
+    return testKey.indexOf(schemaKey) == 0;
   }
 
-  return testKey == schemaKey
+  return testKey == schemaKey;
+}
+
+SimpleSchema.prototype.matchOneOfTheSchemaPrefixKeys = function(presentKey, schemaKeys) {
+  if (presentKey.indexOf(KEY_PREFIX_DENOTER) == -1) {
+    return false;
+  }
+  for (var schemaKey of schemaKeys) {
+    if (this._schemaPrefixKeys.has(schemaKey) && this.isKeyMatch(presentKey, schemaKey)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 generailzedPrefixKeyRegex = new RegExp(`${KEY_PREFIX_DENOTER}.+?\\.`, 'g');
 
 function generalizePrefixKey(key) {
-  return (key+".").replace(generailzedPrefixKeyRegex, `${KEY_PREFIX_DENOTER}${KEY_PREFIX_PLACEHOLDER}.`).slice(0, -1)
+  // In order to support multi-level prefix key support, 
+  // here we add a "." at the end of the key and replace all "::xxxxx." to "::<>." and remove the extra "." at the end
+  // for example, a::xxx.b::yyy -> a::xxx.b::yyy. -> a::<>.b::<>. -> a::<>.b::<>
+  return (key+".").replace(generailzedPrefixKeyRegex, `${KEY_PREFIX_DENOTER}${KEY_PREFIX_PLACEHOLDER}.`).slice(0, -1);
 }
