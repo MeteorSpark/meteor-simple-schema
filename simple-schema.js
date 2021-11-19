@@ -886,8 +886,13 @@ SimpleSchema.prototype.schema = function(key) {
 SimpleSchema.prototype.getDefinition = function(key, propList, functionContext) {
   var self = this;
   var defs = self.schema(key);
+
   if (!defs) {
-    return;
+    var defs = self.schema(generalizePrefixKey(key));
+
+    if (!defs) {
+      return;
+    }
   }
 
   if (_.isArray(propList)) {
